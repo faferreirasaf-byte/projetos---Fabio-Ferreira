@@ -1,0 +1,6 @@
+{
+  "name": "Gestor Financeiro Inteligente",
+  "description": "Aplicativo inteligente de gestão financeira com categorização automática por IA, análise de gastos, dashboards interativos e insights de saúde financeira.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
