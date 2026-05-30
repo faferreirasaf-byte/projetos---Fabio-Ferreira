@@ -25,6 +25,7 @@ import MetricCards from './components/MetricCards';
 import AIAdvisor from './components/AIAdvisor';
 import FinancialCharts from './components/FinancialCharts';
 import GoalsTracker from './components/GoalsTracker';
+import GoogleDriveSync from './components/GoogleDriveSync';
 
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -37,7 +38,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_GOALS;
   });
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'ai' | 'goals' | 'education'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'ai' | 'goals' | 'drive' | 'education'>('dashboard');
 
   // Interactive filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,6 +220,42 @@ export default function App() {
     setGoals(prev => prev.filter(g => g.id !== id));
   };
 
+  const handleImportData = (
+    importData: { transactions?: Transaction[]; goals?: FinancialGoal[] },
+    mergeMode: 'merge' | 'replace'
+  ) => {
+    if (mergeMode === 'replace') {
+      if (importData.transactions) setTransactions(importData.transactions);
+      if (importData.goals) setGoals(importData.goals);
+    } else {
+      setTransactions(prev => {
+        const merged = [...prev];
+        importData.transactions?.forEach(newTx => {
+          const idx = merged.findIndex(t => t.id === newTx.id);
+          if (idx >= 0) {
+            merged[idx] = newTx;
+          } else {
+            merged.push(newTx);
+          }
+        });
+        return merged.sort((a, b) => b.date.localeCompare(a.date));
+      });
+
+      setGoals(prev => {
+        const merged = [...prev];
+        importData.goals?.forEach(newGoal => {
+          const idx = merged.findIndex(g => g.id === newGoal.id);
+          if (idx >= 0) {
+            merged[idx] = newGoal;
+          } else {
+            merged.push(newGoal);
+          }
+        });
+        return merged;
+      });
+    }
+  };
+
   // Clear All for demonstration reset state
   const handleResetData = () => {
     if (confirm("Deseja realmente redefinir o simulador para os dados originais? Suas inserções manuais serão perdidas.")) {
@@ -284,6 +321,12 @@ export default function App() {
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'goals' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-200 hover:bg-emerald-800/30'}`}
             >
               Metas
+            </button>
+            <button
+              onClick={() => setActiveTab('drive')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'drive' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-200 hover:bg-emerald-800/30'}`}
+            >
+              Google Drive
             </button>
             <button
               onClick={() => setActiveTab('education')}
@@ -440,59 +483,116 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Transaction list table complete */}
-                <div className="bg-white border border-gray-150 rounded-xl shadow-xs overflow-hidden">
+                {/* Transaction list responsive container */}
+                <div className="w-full">
                   {filteredTransactions.length === 0 ? (
-                    <div className="py-12 text-center text-xs text-gray-400 italic">
+                    <div className="bg-white border border-gray-150 rounded-xl py-12 text-center text-xs text-gray-400 italic shadow-3xs">
                       Nenhuma transação se encaixa nestes critérios de filtro.
                     </div>
                   ) : (
-                    <table className="w-full text-left text-xs text-gray-600">
-                      <thead className="bg-gray-50 border-b border-gray-150 font-mono text-gray-500">
-                        <tr>
-                          <th className="p-4">Data</th>
-                          <th className="p-4">Descrição</th>
-                          <th className="p-4">Categoria</th>
-                          <th className="p-4">Fluxo</th>
-                          <th className="p-4 text-right">Valor</th>
-                          <th className="p-4 text-center">Recorrência</th>
-                          <th className="p-4 text-right">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
+                    <>
+                      {/* Desktop Table View (hidden on mobile, blocks on desktop md+) */}
+                      <div className="hidden md:block bg-white border border-gray-150 rounded-xl shadow-xs overflow-hidden animate-fade-in">
+                        <table className="w-full text-left text-xs text-gray-600">
+                          <thead className="bg-gray-50 border-b border-gray-150 font-mono text-gray-500">
+                            <tr>
+                              <th className="p-4">Data</th>
+                              <th className="p-4">Descrição</th>
+                              <th className="p-4">Categoria</th>
+                              <th className="p-4">Fluxo</th>
+                              <th className="p-4 text-right">Valor</th>
+                              <th className="p-4 text-center">Recorrência</th>
+                              <th className="p-4 text-right">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {filteredTransactions.map((t) => (
+                              <tr key={t.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="p-4 font-mono text-gray-500">{t.date}</td>
+                                <td className="p-4 font-semibold text-gray-800">{t.description}</td>
+                                <td className="p-4">
+                                  <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded text-xxs font-semibold">
+                                    {t.category}
+                                  </span>
+                                </td>
+                                <td className="p-4 font-semibold">
+                                  <span className={`px-2 py-0.5 rounded-full text-xxs ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : t.type === 'investment' ? 'bg-indigo-50 text-indigo-700' : 'bg-red-50 text-red-700'}`}>
+                                    {t.type === 'income' ? 'Entrada' : t.type === 'investment' ? 'Investimento' : t.type === 'debt' ? 'Dívida' : 'Despesa'}
+                                  </span>
+                                </td>
+                                <td className={`p-4 text-right font-mono font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-gray-800'}`}>
+                                  {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="p-4 text-center text-xxs font-mono text-gray-400">
+                                  {t.recurring ? `Sim (${t.recurrencyPeriod})` : 'Não'}
+                                </td>
+                                <td className="p-4 text-right">
+                                  <button
+                                    onClick={() => handleDeleteTransaction(t.id)}
+                                    className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                                    title="Excluir Transação"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile Cards View (displayed only on mobile screens md:hidden) */}
+                      <div className="block md:hidden space-y-3">
                         {filteredTransactions.map((t) => (
-                          <tr key={t.id} className="hover:bg-gray-50/50">
-                            <td className="p-4 font-mono text-gray-500">{t.date}</td>
-                            <td className="p-4 font-semibold text-gray-800">{t.description}</td>
-                            <td className="p-4">
-                              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded text-xxs font-semibold">
-                                {t.category}
+                          <div 
+                            key={t.id} 
+                            className="bg-white border border-gray-150 rounded-2xl p-4 shadow-2xs space-y-3 flex flex-col justify-between"
+                          >
+                            {/* Card Top Header: Value & Touch target delete actions with safe target size (44px) */}
+                            <div className="flex items-center justify-between">
+                              <span className={`font-mono font-bold text-sm tracking-tight ${t.type === 'income' ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                               </span>
-                            </td>
-                            <td className="p-4 font-semibold">
-                              <span className={`px-2 py-0.5 rounded-full text-xxs ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : t.type === 'investment' ? 'bg-indigo-50 text-indigo-700' : 'bg-red-50 text-red-700'}`}>
-                                {t.type === 'income' ? 'Entrada' : t.type === 'investment' ? 'Investimento' : t.type === 'debt' ? 'Dívida' : 'Despesa'}
-                              </span>
-                            </td>
-                            <td className={`p-4 text-right font-mono font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-gray-800'}`}>
-                              {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-4 text-center text-xxs font-mono text-gray-400">
-                              {t.recurring ? `Sim (${t.recurrencyPeriod})` : 'Não'}
-                            </td>
-                            <td className="p-4 text-right">
+                              
                               <button
                                 onClick={() => handleDeleteTransaction(t.id)}
-                                className="p-1 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded transition-colors"
+                                className="w-11 h-11 flex items-center justify-center bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-600 rounded-xl transition-all cursor-pointer shrink-0"
+                                aria-label="Excluir Transação"
                                 title="Excluir Transação"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-5 h-5" />
                               </button>
-                            </td>
-                          </tr>
+                            </div>
+
+                            {/* Card Mid Body: Description details */}
+                            <div>
+                              <h4 className="font-sans font-semibold text-slate-800 text-xs leading-relaxed">{t.description}</h4>
+                            </div>
+
+                            {/* Card Bottom: Metadata Badges */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-50">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-semibold font-sans">
+                                  {t.category}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-sans font-semibold ${t.type === 'income' ? 'bg-emerald-50 text-emerald-700' : t.type === 'investment' ? 'bg-indigo-50 text-indigo-700' : 'bg-red-50 text-red-700'}`}>
+                                  {t.type === 'income' ? 'Entrada' : t.type === 'investment' ? 'Investimento' : t.type === 'debt' ? 'Dívida' : 'Despesa'}
+                                </span>
+                                {t.recurring && (
+                                  <span className="bg-slate-50 text-slate-500 px-2 py-0.5 border border-slate-100 rounded text-[10px] font-mono font-medium">
+                                    Sim ({t.recurrencyPeriod})
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {t.date}
+                              </span>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -527,6 +627,22 @@ export default function App() {
                   onAddGoal={handleAddGoal} 
                   onContribute={handleContributeGoal} 
                   onRemoveGoal={handleRemoveGoal} 
+                />
+              </div>
+            )}
+
+            {/* PANEL 5: GOOGLE DRIVE SYNC */}
+            {activeTab === 'drive' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold font-sans text-gray-800">Sincronização com Google Drive</h2>
+                  <p className="text-xs text-gray-500">Módulo de Backup seguro e exportações diretas para sua conta do Drive corporativa ou pessoal</p>
+                </div>
+
+                <GoogleDriveSync 
+                  transactions={transactions}
+                  goals={goals}
+                  onImportData={handleImportData}
                 />
               </div>
             )}
